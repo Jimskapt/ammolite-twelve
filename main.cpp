@@ -3,6 +3,7 @@
 #include <vulkan/vulkan.h>
 #include <GLFW/glfw3.h>
 
+#include <fstream>
 #include <iostream>
 #include <stdexcept>
 #include <functional>
@@ -21,7 +22,7 @@
 // https://vulkan-tutorial.com/
 // https://github.com/Overv/VulkanTutorial
 
-// CONTINUE TO https://vulkan-tutorial.com/Drawing_a_triangle/Graphics_pipeline_basics
+// CONTINUE TO https://vulkan-tutorial.com/Drawing_a_triangle/Graphics_pipeline_basics/Fixed_functions
 
 const int WINDOW_WIDTH = 800;
 const int WINDOW_HEIGHT = 600;
@@ -66,6 +67,24 @@ struct SwapChainSupportDetails {
     std::vector<VkSurfaceFormatKHR> formats;
     std::vector<VkPresentModeKHR> presentModes;
 };
+
+static std::vector<char> readFile(const std::string& filepath) {
+    std::ifstream file(filepath, std::ios::ate | std::ios::binary);
+
+    if(!file.is_open()) {
+        throw std::runtime_error("file to open the file " + filepath);
+    }
+
+    size_t fileSize = (size_t) file.tellg();
+    std::vector<char> buffer(fileSize);
+
+    file.seekg(0);
+    file.read(buffer.data(), fileSize);
+
+    file.close();
+
+    return buffer;
+}
 
 class HelloTriangleApplication {
     public:
@@ -114,6 +133,7 @@ class HelloTriangleApplication {
             createLogicalDevice();
             createSwapChain();
             createImageViews();
+            createGraphicsPipeline();
         }
         void createVulkanInstance() {
             VkApplicationInfo appInfo = {};
@@ -578,6 +598,48 @@ class HelloTriangleApplication {
                     std::cout << "Successfully created image view #" + std::to_string(i) << std::endl;
                 }
             }
+        }
+        void createGraphicsPipeline() {
+            auto vertexCode = readFile("shaders/vert.spv");
+            auto fragmentCode = readFile("shaders/frag.spv");
+
+            VkShaderModule vertexModule;
+            VkShaderModule fragmentModule;
+
+            vertexModule = createShaderModule(vertexCode, "vertex");
+            fragmentModule = createShaderModule(fragmentCode, "fragment");
+
+            VkPipelineShaderStageCreateInfo vertexStageCreateInfo = {};
+            vertexStageCreateInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
+            vertexStageCreateInfo.stage = VK_SHADER_STAGE_VERTEX_BIT;
+            vertexStageCreateInfo.module = vertexModule;
+            vertexStageCreateInfo.pName = "main";
+
+            VkPipelineShaderStageCreateInfo fragmentStageCreateInfo = {};
+            fragmentStageCreateInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
+            fragmentStageCreateInfo.stage = VK_SHADER_STAGE_FRAGMENT_BIT;
+            fragmentStageCreateInfo.module = fragmentModule;
+            fragmentStageCreateInfo.pName = "main";
+
+            VkPipelineShaderStageCreateInfo shaderStages[] = {vertexStageCreateInfo, fragmentStageCreateInfo};
+
+            vkDestroyShaderModule(logicalDevice, fragmentModule, nullptr);
+            vkDestroyShaderModule(logicalDevice, vertexModule, nullptr);
+        }
+        VkShaderModule createShaderModule(const std::vector<char>& code, const char* name) {
+            VkShaderModuleCreateInfo createInfo = {};
+            createInfo.sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO;
+            createInfo.codeSize = code.size();
+            createInfo.pCode = reinterpret_cast<const uint32_t*>(code.data());
+
+            VkShaderModule result;
+            if(vkCreateShaderModule(logicalDevice, &createInfo, nullptr, &result) != VK_SUCCESS) {
+                throw std::runtime_error("failed to create " + std::string(name) + " shader module");
+            } else {
+                std::cout << "Shader module of " << name << " has been successfully created." << std::endl;
+            }
+
+            return result;
         }
         void mainLoop() {
             while(!glfwWindowShouldClose(window)) {
