@@ -22,7 +22,7 @@
 // https://vulkan-tutorial.com/
 // https://github.com/Overv/VulkanTutorial
 
-// CONTINUE TO https://vulkan-tutorial.com/Drawing_a_triangle/Graphics_pipeline_basics/Render_passes
+// CONTINUE TO https://vulkan-tutorial.com/Drawing_a_triangle/Graphics_pipeline_basics/Conclusion
 
 const int WINDOW_WIDTH = 800;
 const int WINDOW_HEIGHT = 600;
@@ -118,6 +118,7 @@ class HelloTriangleApplication {
         VkExtent2D swapChainExtent;
         std::vector<VkImageView> swapChainImageViews;
 
+        VkRenderPass renderPass;
         VkPipelineLayout pipelineLayout;
         void initWindow() {
             glfwInit();
@@ -135,6 +136,7 @@ class HelloTriangleApplication {
             createLogicalDevice();
             createSwapChain();
             createImageViews();
+            createRenderPass();
             createGraphicsPipeline();
         }
         void createVulkanInstance() {
@@ -601,6 +603,39 @@ class HelloTriangleApplication {
                 }
             }
         }
+        void createRenderPass() {
+            VkAttachmentDescription colorAttachment = {};
+            colorAttachment.format = swapChainImageFormat;
+            colorAttachment.samples = VK_SAMPLE_COUNT_1_BIT;
+            colorAttachment.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
+            colorAttachment.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
+            colorAttachment.stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
+            colorAttachment.stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
+            colorAttachment.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+            colorAttachment.finalLayout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
+
+            VkAttachmentReference colorAttachmentRef = {};
+            colorAttachmentRef.attachment = 0;
+            colorAttachmentRef.layout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+
+            VkSubpassDescription subpass = {};
+            subpass.pipelineBindPoint = VK_PIPELINE_BIND_POINT_GRAPHICS;
+            subpass.colorAttachmentCount = 1;
+            subpass.pColorAttachments = &colorAttachmentRef;
+
+            VkRenderPassCreateInfo renderPassInfo = {};
+            renderPassInfo.sType = VK_STRUCTURE_TYPE_RENDER_PASS_CREATE_INFO;
+            renderPassInfo.attachmentCount = 1;
+            renderPassInfo.pAttachments = &colorAttachment;
+            renderPassInfo.subpassCount = 1;
+            renderPassInfo.pSubpasses = &subpass;
+
+            if(vkCreateRenderPass(logicalDevice, &renderPassInfo, nullptr, &renderPass) != VK_SUCCESS) {
+                throw std::runtime_error("failed to create render pass");
+            } else {
+                std::cout << "Render pass successfully created."
+            }
+        }
         void createGraphicsPipeline() {
             auto vertexCode = readFile("shaders/vert.spv");
             auto fragmentCode = readFile("shaders/frag.spv");
@@ -699,7 +734,7 @@ class HelloTriangleApplication {
             colorBlending.blendConstants[2] = 0.0f;
             colorBlending.blendConstants[3] = 0.0f;
 
-            VkPipelineLayout pipelineLayoutInfo = {};
+            VkPipelineLayoutCreateInfo pipelineLayoutInfo = {};
             pipelineLayoutInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
             pipelineLayoutInfo.setLayoutCount = 0;
             pipelineLayoutInfo.pSetLayouts = nullptr;
@@ -707,7 +742,7 @@ class HelloTriangleApplication {
             pipelineLayoutInfo.pPushConstantRanges = nullptr;
 
             if(vkCreatePipelineLayout(logicalDevice, &pipelineLayoutInfo, nullptr, &pipelineLayout) != VK_SUCCESS) {
-                throw std::runtime_error("failed to create pipeline layout")
+                throw std::runtime_error("failed to create pipeline layout");
             } else {
                 std::cout << "Pipeline layout successfully created." << std::endl;
             }
@@ -737,6 +772,7 @@ class HelloTriangleApplication {
         }
         void cleanup() {
             vkDestroyPipelineLayout(logicalDevice, pipelineLayout, nullptr);
+            vkDestroyRenderPass(logicalDevice, renderPass, nullptr);
 
             for(auto imageview : swapChainImageViews) {
                 vkDestroyImageView(logicalDevice, imageview, nullptr);
