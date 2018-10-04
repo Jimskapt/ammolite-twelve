@@ -22,7 +22,7 @@
 // https://vulkan-tutorial.com/
 // https://github.com/Overv/VulkanTutorial
 
-// CONTINUE TO https://vulkan-tutorial.com/Drawing_a_triangle/Graphics_pipeline_basics/Conclusion
+// CONTINUE TO https://vulkan-tutorial.com/Drawing_a_triangle/Drawing/Framebuffers
 
 const int WINDOW_WIDTH = 800;
 const int WINDOW_HEIGHT = 600;
@@ -120,6 +120,7 @@ class HelloTriangleApplication {
 
         VkRenderPass renderPass;
         VkPipelineLayout pipelineLayout;
+        VkPipeline graphicsPipeline;
         void initWindow() {
             glfwInit();
 
@@ -633,7 +634,7 @@ class HelloTriangleApplication {
             if(vkCreateRenderPass(logicalDevice, &renderPassInfo, nullptr, &renderPass) != VK_SUCCESS) {
                 throw std::runtime_error("failed to create render pass");
             } else {
-                std::cout << "Render pass successfully created."
+                std::cout << "Render pass successfully created." << std::endl;
             }
         }
         void createGraphicsPipeline() {
@@ -747,6 +748,30 @@ class HelloTriangleApplication {
                 std::cout << "Pipeline layout successfully created." << std::endl;
             }
 
+            VkGraphicsPipelineCreateInfo pipelineInfo = {};
+            pipelineInfo.sType = VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO;
+            pipelineInfo.stageCount = 2;
+            pipelineInfo.pStages = shaderStages;
+            pipelineInfo.pVertexInputState = &vertexInputInfo;
+            pipelineInfo.pInputAssemblyState = &inputAssembly;
+            pipelineInfo.pViewportState = &viewportState;
+            pipelineInfo.pRasterizationState = &rasterizer;
+            pipelineInfo.pMultisampleState = &multisampling;
+            pipelineInfo.pDepthStencilState = nullptr;
+            pipelineInfo.pColorBlendState = &colorBlending;
+            pipelineInfo.pDynamicState = nullptr;
+            pipelineInfo.layout = pipelineLayout;
+            pipelineInfo.renderPass = renderPass;
+            pipelineInfo.subpass = 0;
+            pipelineInfo.basePipelineHandle = VK_NULL_HANDLE;
+            pipelineInfo.basePipelineIndex = -1;
+
+            if(vkCreateGraphicsPipelines(logicalDevice, VK_NULL_HANDLE, 1, &pipelineInfo, nullptr, &graphicsPipeline) != VK_SUCCESS) {
+                throw std::runtime_error("failed to create graphics pipeline");
+            } else {
+                std::cout << "Graphics pipeline successfully created." << std::endl;
+            }
+
             vkDestroyShaderModule(logicalDevice, fragmentModule, nullptr);
             vkDestroyShaderModule(logicalDevice, vertexModule, nullptr);
         }
@@ -771,6 +796,9 @@ class HelloTriangleApplication {
             }
         }
         void cleanup() {
+            vkDestroyPipeline(logicalDevice, graphicsPipeline, nullptr);
+            vkDestroyPipelineLayout(logicalDevice, pipelineLayout, nullptr);
+
             vkDestroyPipelineLayout(logicalDevice, pipelineLayout, nullptr);
             vkDestroyRenderPass(logicalDevice, renderPass, nullptr);
 
