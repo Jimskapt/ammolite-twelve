@@ -22,7 +22,7 @@
 // https://vulkan-tutorial.com/
 // https://github.com/Overv/VulkanTutorial
 
-// CONTINUE TO https://vulkan-tutorial.com/Drawing_a_triangle/Drawing/Framebuffers
+// CONTINUE TO https://vulkan-tutorial.com/Drawing_a_triangle/Drawing/Command_buffers
 
 const int WINDOW_WIDTH = 800;
 const int WINDOW_HEIGHT = 600;
@@ -121,6 +121,7 @@ class HelloTriangleApplication {
         VkRenderPass renderPass;
         VkPipelineLayout pipelineLayout;
         VkPipeline graphicsPipeline;
+        std::vector<VkFramebuffer> swapChainFramebuffers;
         void initWindow() {
             glfwInit();
 
@@ -139,6 +140,7 @@ class HelloTriangleApplication {
             createImageViews();
             createRenderPass();
             createGraphicsPipeline();
+            createFramebuffers();
         }
         void createVulkanInstance() {
             VkApplicationInfo appInfo = {};
@@ -790,12 +792,40 @@ class HelloTriangleApplication {
 
             return result;
         }
+        void createFramebuffers() {
+            swapChainFramebuffers.resize(swapChainImageViews.size());
+
+            for(size_t i = 0; i < swapChainImageViews.size(); i++) {
+                VkImageView attachments[] = {
+                    swapChainImageViews[i]
+                };
+
+                VkFramebufferCreateInfo framebufferInfo = {};
+                framebufferInfo.sType = VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO;
+                framebufferInfo.renderPass = renderPass;
+                framebufferInfo.attachmentCount = 1;
+                framebufferInfo.pAttachments = attachments;
+                framebufferInfo.width = swapChainExtent.width;
+                framebufferInfo.height = swapChainExtent.height;
+                framebufferInfo.layers = 1;
+
+                if(vkCreateFramebuffer(logicalDevice, &framebufferInfo, nullptr, &swapChainFramebuffers[i]) != VK_SUCCESS) {
+                    throw std::runtime_error("failed to create framebuffer #" + std::to_string(i));
+                } else {
+                    std::cout << "Successfully created framebuffer #" << i << std::endl;
+                }
+            }
+        }
         void mainLoop() {
             while(!glfwWindowShouldClose(window)) {
                 glfwPollEvents();
             }
         }
         void cleanup() {
+            for(auto framebuffer : swapChainFramebuffers) {
+                vkDestroyFramebuffer(logicalDevice, framebuffer, nullptr);
+            }
+
             vkDestroyPipeline(logicalDevice, graphicsPipeline, nullptr);
             vkDestroyPipelineLayout(logicalDevice, pipelineLayout, nullptr);
 
