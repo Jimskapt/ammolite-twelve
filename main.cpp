@@ -22,7 +22,7 @@
 // https://vulkan-tutorial.com/
 // https://github.com/Overv/VulkanTutorial
 
-// CONTINUE TO https://vulkan-tutorial.com/Drawing_a_triangle/Drawing/Command_buffers
+// CONTINUE TO https://vulkan-tutorial.com/Drawing_a_triangle/Drawing/Command_buffers#page_Command_buffer_allocation
 
 const int WINDOW_WIDTH = 800;
 const int WINDOW_HEIGHT = 600;
@@ -121,6 +121,8 @@ class HelloTriangleApplication {
         VkRenderPass renderPass;
         VkPipelineLayout pipelineLayout;
         VkPipeline graphicsPipeline;
+
+        VkCommandPool commandPool;
         std::vector<VkFramebuffer> swapChainFramebuffers;
         void initWindow() {
             glfwInit();
@@ -141,6 +143,7 @@ class HelloTriangleApplication {
             createRenderPass();
             createGraphicsPipeline();
             createFramebuffers();
+            createCommandPool();
         }
         void createVulkanInstance() {
             VkApplicationInfo appInfo = {};
@@ -435,7 +438,7 @@ class HelloTriangleApplication {
             if(vkCreateDevice(physicalDevice, &createInfo, nullptr, &logicalDevice) != VK_SUCCESS) {
                 throw std::runtime_error("failed to create logical device");
             } else {
-                std::cout << "Logical device successfully created." << std::endl;
+                std::cout << "Successfully created logical device." << std::endl;
             }
 
             vkGetDeviceQueue(logicalDevice, indices.presentFamily.value(), 0, &graphicsQueue);
@@ -444,7 +447,7 @@ class HelloTriangleApplication {
             if(glfwCreateWindowSurface(vulkanInstance, window, nullptr, &surface) != VK_SUCCESS) {
                 throw std::runtime_error("failed to create window surface");
             } else {
-                std::cout << "Surface window created." << std::endl;
+                std::cout << "Successfully created surface window." << std::endl;
             }
         }
         SwapChainSupportDetails querySwapChainSupport(VkPhysicalDevice device) {
@@ -568,7 +571,7 @@ class HelloTriangleApplication {
             if(vkCreateSwapchainKHR(logicalDevice, &createInfo, nullptr, &swapChain) != VK_SUCCESS) {
                 throw std::runtime_error("failed to create the swap chain");
             } else {
-                std::cout << "Swap chain successfully created." << std::endl;
+                std::cout << "Successfully created swap chain." << std::endl;
             }
 
             vkGetSwapchainImagesKHR(logicalDevice, swapChain, &imageCount, nullptr);
@@ -636,7 +639,7 @@ class HelloTriangleApplication {
             if(vkCreateRenderPass(logicalDevice, &renderPassInfo, nullptr, &renderPass) != VK_SUCCESS) {
                 throw std::runtime_error("failed to create render pass");
             } else {
-                std::cout << "Render pass successfully created." << std::endl;
+                std::cout << "Successfully created render pass." << std::endl;
             }
         }
         void createGraphicsPipeline() {
@@ -747,7 +750,7 @@ class HelloTriangleApplication {
             if(vkCreatePipelineLayout(logicalDevice, &pipelineLayoutInfo, nullptr, &pipelineLayout) != VK_SUCCESS) {
                 throw std::runtime_error("failed to create pipeline layout");
             } else {
-                std::cout << "Pipeline layout successfully created." << std::endl;
+                std::cout << "Successfully created pipeline layout." << std::endl;
             }
 
             VkGraphicsPipelineCreateInfo pipelineInfo = {};
@@ -771,7 +774,7 @@ class HelloTriangleApplication {
             if(vkCreateGraphicsPipelines(logicalDevice, VK_NULL_HANDLE, 1, &pipelineInfo, nullptr, &graphicsPipeline) != VK_SUCCESS) {
                 throw std::runtime_error("failed to create graphics pipeline");
             } else {
-                std::cout << "Graphics pipeline successfully created." << std::endl;
+                std::cout << "Successfully created graphics pipeline." << std::endl;
             }
 
             vkDestroyShaderModule(logicalDevice, fragmentModule, nullptr);
@@ -787,7 +790,7 @@ class HelloTriangleApplication {
             if(vkCreateShaderModule(logicalDevice, &createInfo, nullptr, &result) != VK_SUCCESS) {
                 throw std::runtime_error("failed to create " + std::string(name) + " shader module");
             } else {
-                std::cout << "Shader module of " << name << " has been successfully created." << std::endl;
+                std::cout << "Successfully created shader module of " << name << "." << std::endl;
             }
 
             return result;
@@ -816,12 +819,28 @@ class HelloTriangleApplication {
                 }
             }
         }
+        void createCommandPool() {
+            QueueFamilyIndices queueFamilyIndices = findQueueFamilies(physicalDevice);
+
+            VkCommandPoolCreateInfo poolInfo = {};
+            poolInfo.sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO;
+            poolInfo.queueFamilyIndex = queueFamilyIndices.graphicsFamily.value();
+            poolInfo.flags = 0;
+
+            if(vkCreateCommandPool(logicalDevice, &poolInfo, nullptr, &commandPool) != VK_SUCCESS) {
+                throw std::runtime_error("failed to create command pool");
+            } else {
+                std::cout << "Successfully created command pool" << std::endl;
+            }
+        }
         void mainLoop() {
             while(!glfwWindowShouldClose(window)) {
                 glfwPollEvents();
             }
         }
         void cleanup() {
+            vkDestroyCommandPool(logicalDevice, commandPool, nullptr);
+
             for(auto framebuffer : swapChainFramebuffers) {
                 vkDestroyFramebuffer(logicalDevice, framebuffer, nullptr);
             }
