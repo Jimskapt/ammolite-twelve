@@ -22,7 +22,7 @@
 // https://vulkan-tutorial.com/
 // https://github.com/Overv/VulkanTutorial
 
-// CONTINUE TO https://vulkan-tutorial.com/Drawing_a_triangle/Drawing/Command_buffers#page_Command_buffer_allocation
+// CONTINUE TO https://vulkan-tutorial.com/Drawing_a_triangle/Drawing/Rendering_and_presentation
 
 const int WINDOW_WIDTH = 800;
 const int WINDOW_HEIGHT = 600;
@@ -124,6 +124,7 @@ class HelloTriangleApplication {
 
         VkCommandPool commandPool;
         std::vector<VkFramebuffer> swapChainFramebuffers;
+        std::vector<VkCommandBuffer> commandBuffers;
         void initWindow() {
             glfwInit();
 
@@ -144,6 +145,7 @@ class HelloTriangleApplication {
             createGraphicsPipeline();
             createFramebuffers();
             createCommandPool();
+            createCommandBuffers();
         }
         void createVulkanInstance() {
             VkApplicationInfo appInfo = {};
@@ -303,7 +305,7 @@ class HelloTriangleApplication {
                 VkPhysicalDeviceProperties deviceProperties;
                 vkGetPhysicalDeviceProperties(device, &deviceProperties);
 
-                std::cout << "\t-" << deviceProperties.deviceName << std::endl;
+                std::cout << "\t- " << deviceProperties.deviceName << std::endl;
 
                 VkPhysicalDeviceFeatures deviceFeatures;
                 vkGetPhysicalDeviceFeatures(device, &deviceFeatures);
@@ -831,6 +833,58 @@ class HelloTriangleApplication {
                 throw std::runtime_error("failed to create command pool");
             } else {
                 std::cout << "Successfully created command pool" << std::endl;
+            }
+        }
+        void createCommandBuffers() {
+            commandBuffers.resize(swapChainFramebuffers.size());
+
+            VkCommandBufferAllocateInfo allocInfo = {};
+            allocInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
+            allocInfo.commandPool = commandPool;
+            allocInfo.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
+            allocInfo.commandBufferCount = (uint32_t) commandBuffers.size();
+
+            if(vkAllocateCommandBuffers(logicalDevice, &allocInfo, commandBuffers.data()) != VK_SUCCESS) {
+                throw std::runtime_error("failed to allocate command buffers");
+            } else {
+                std::cout << "Successfully created command buffers" << std::endl;
+            }
+
+            for(size_t i = 0; i < commandBuffers.size(); i++) {
+                VkCommandBufferBeginInfo beginInfo = {};
+                beginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
+                beginInfo.flags = VK_COMMAND_BUFFER_USAGE_SIMULTANEOUS_USE_BIT;
+                beginInfo.pInheritanceInfo = nullptr;
+
+                if(vkBeginCommandBuffer(commandBuffers[i], &beginInfo) != VK_SUCCESS) {
+                    throw std::runtime_error("failed to begin recording command buffer #" + std::to_string(i));
+                }
+
+                VkRenderPassBeginInfo renderPassInfo = {};
+                renderPassInfo.sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO;
+                renderPassInfo.renderPass = renderPass;
+                renderPassInfo.framebuffer = swapChainFramebuffers[i];
+
+                renderPassInfo.renderArea.offset = {0, 0};
+                renderPassInfo.renderArea.extent = swapChainExtent;
+
+                VkClearValue clearColor = {0.0f, 0.0f, 0.0f, 1.0f};
+                renderPassInfo.clearValueCount = 1;
+                renderPassInfo.pClearValues = &clearColor;
+
+                vkCmdBeginRenderPass(commandBuffers[i], &renderPassInfo, VK_SUBPASS_CONTENTS_INLINE);
+
+                vkCmdBindPipeline(commandBuffers[i], VK_PIPELINE_BIND_POINT_GRAPHICS, graphicsPipeline);
+
+                vkCmdDraw(commandBuffers[i], 3, 1, 0, 0);
+
+                vkCmdEndRenderPass(commandBuffers[i]);
+
+                if(vkEndCommandBuffer(commandBuffers[i]) != VK_SUCCESS) {
+                    throw std::runtime_error("failed to record command buffer #" + std::to_string(i));
+                } else {
+                    std::cout << "Successfully recorded command buffer #" << i << std::endl;
+                }
             }
         }
         void mainLoop() {
