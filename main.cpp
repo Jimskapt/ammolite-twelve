@@ -22,10 +22,11 @@
 // https://vulkan-tutorial.com/
 // https://github.com/Overv/VulkanTutorial
 
-// CONTINUE TO https://vulkan-tutorial.com/Drawing_a_triangle/Drawing/Rendering_and_presentation#page_Presentation
+// CONTINUE TO https://vulkan-tutorial.com/Drawing_a_triangle/Drawing/Rendering_and_presentation#page_Frames_in_flight
 
 const int WINDOW_WIDTH = 800;
 const int WINDOW_HEIGHT = 600;
+const int MAX_FRAMES_IN_FLIGHT = 2;
 
 const std::vector<const char*> validationLayersNeeded = {
     "VK_LAYER_LUNARG_standard_validation"
@@ -110,6 +111,7 @@ class HelloTriangleApplication {
         VkDevice logicalDevice;
 
         VkQueue graphicsQueue;
+        VkQueue presentQueue;
 
         VkSurfaceKHR surface;
         VkSwapchainKHR swapChain;
@@ -126,8 +128,9 @@ class HelloTriangleApplication {
         std::vector<VkFramebuffer> swapChainFramebuffers;
         std::vector<VkCommandBuffer> commandBuffers;
 
-        VkSemaphore imageAvailableSemaphore;
-        VkSemaphore renderFinishedSemaphore;
+        std::vector<VkSemaphore> imageAvailableSemaphores;
+        std::vector<VkSemaphore> renderFinishedSemaphores;
+        size_t currentFrame = 0;
         void initWindow() {
             glfwInit();
 
@@ -447,7 +450,8 @@ class HelloTriangleApplication {
                 std::cout << "Successfully created logical device." << std::endl;
             }
 
-            vkGetDeviceQueue(logicalDevice, indices.presentFamily.value(), 0, &graphicsQueue);
+            vkGetDeviceQueue(logicalDevice, indices.graphicsFamily.value(), 0, &graphicsQueue);
+            vkGetDeviceQueue(logicalDevice, indices.presentFamily.value(), 0, &presentQueue);
         }
         void createSurface() {
             if(glfwCreateWindowSurface(vulkanInstance, window, nullptr, &surface) != VK_SUCCESS) {
@@ -885,7 +889,7 @@ class HelloTriangleApplication {
                 renderPassInfo.renderArea.offset = {0, 0};
                 renderPassInfo.renderArea.extent = swapChainExtent;
 
-                VkClearValue clearColor = {0.8f, 0.8f, 0.8f, 1.0f};
+                VkClearValue clearColor = {0.3f, 0.3f, 0.3f, 1.0f};
                 renderPassInfo.clearValueCount = 1;
                 renderPassInfo.pClearValues = &clearColor;
 
@@ -905,19 +909,24 @@ class HelloTriangleApplication {
             }
         }
         void createSemaphores() {
+            imageAvailableSemaphores.resize(MAX_FRAMES_IN_FLIGHT);
+            renderFinishedSemaphores.resize(MAX_FRAMES_IN_FLIGHT);
+
             VkSemaphoreCreateInfo semaphoreInfo = {};
             semaphoreInfo.sType = VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO;
 
-            if(vkCreateSemaphore(logicalDevice, &semaphoreInfo, nullptr, &imageAvailableSemaphore) != VK_SUCCESS) {
-                throw std::runtime_error("failed to create image available semaphore");
-            } else {
-                std::cout << "Successfully created image available semaphore" << std::endl;
-            }
+            for(size_t i = 0; i < MAX_FRAMES_IN_FLIGHT; i++) {
+                if(vkCreateSemaphore(logicalDevice, &semaphoreInfo, nullptr, &imageAvailableSemaphores[i]) != VK_SUCCESS) {
+                    throw std::runtime_error("failed to create image available semaphore");
+                } else {
+                    std::cout << "Successfully created image available semaphore" << std::endl;
+                }
 
-            if(vkCreateSemaphore(logicalDevice, &semaphoreInfo, nullptr, &renderFinishedSemaphore) != VK_SUCCESS) {
-                throw std::runtime_error("failed to create render finished semaphore");
-            } else {
-                std::cout << "Successfully created render finished semaphore" << std::endl;
+                if(vkCreateSemaphore(logicalDevice, &semaphoreInfo, nullptr, &renderFinishedSemaphores[i]) != VK_SUCCESS) {
+                    throw std::runtime_error("failed to create render finished semaphore");
+                } else {
+                    std::cout << "Successfully created render finished semaphore" << std::endl;
+                }
             }
         }
         void mainLoop() {
@@ -925,15 +934,17 @@ class HelloTriangleApplication {
                 glfwPollEvents();
                 drawFrame();
             }
+
+            vkDeviceWaitIdle(logicalDevice);
         }
         void drawFrame() {
             uint32_t imageIndex;
-            vkAcquireNextImageKHR(logicalDevice, swapChain, std::numeric_limits<uint64_t>::max(), imageAvailableSemaphore, VK_NULL_HANDLE, &imageIndex);
+            vkAcquireNextImageKHR(logicalDevice, swapChain, std::numeric_limits<uint64_t>::max(), imageAvailableSemaphores[currentFrame], VK_NULL_HANDLE, &imageIndex);
 
             VkSubmitInfo submitInfo = {};
             submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
 
-            VkSemaphore waitSemaphores[] = {imageAvailableSemaphore};
+            VkSemaphore waitSemaphores[] = {imageAvailableSemaphores[currentFrame]};
             VkPipelineStageFlags waitStages[] = {VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT};
             submitInfo.waitSemaphoreCount = 1;
             submitInfo.pWaitSemaphores = waitSemaphores;
@@ -942,7 +953,7 @@ class HelloTriangleApplication {
             submitInfo.commandBufferCount = 1;
             submitInfo.pCommandBuffers = &commandBuffers[imageIndex];
 
-            VkSemaphore signalSemaphores[] = {renderFinishedSemaphore};
+            VkSemaphore signalSemaphores[] = {renderFinishedSemaphores[currentFrame]};
             submitInfo.signalSemaphoreCount = 1;
             submitInfo.pSignalSemaphores = signalSemaphores;
 
@@ -951,10 +962,28 @@ class HelloTriangleApplication {
             } else {
                 std::cout << "Successfully submitted draw command buffer" << std::endl;
             }
+
+            VkPresentInfoKHR presentInfo = {};
+            presentInfo.sType = VK_STRUCTURE_TYPE_PRESENT_INFO_KHR;
+            presentInfo.waitSemaphoreCount = 1;
+            presentInfo.pWaitSemaphores = signalSemaphores;
+
+            VkSwapchainKHR swapChains[] = {swapChain};
+            presentInfo.swapchainCount = 1;
+            presentInfo.pSwapchains = swapChains;
+            presentInfo.pImageIndices = &imageIndex;
+            presentInfo.pResults = nullptr;
+
+            vkQueuePresentKHR(presentQueue, &presentInfo);
+
+            // vkQueueWaitIdle(presentInfo);
+            currentFrame = (currentFrame + 1) % MAX_FRAMES_IN_FLIGHT;
         }
         void cleanup() {
-            vkDestroySemaphore(logicalDevice, renderFinishedSemaphore, nullptr);
-            vkDestroySemaphore(logicalDevice, imageAvailableSemaphore, nullptr);
+            for(size_t i = 0; i < MAX_FRAMES_IN_FLIGHT; i++) {
+                vkDestroySemaphore(logicalDevice, imageAvailableSemaphores[i], nullptr);
+                vkDestroySemaphore(logicalDevice, renderFinishedSemaphores[i], nullptr);
+            }
 
             vkDestroyCommandPool(logicalDevice, commandPool, nullptr);
 
