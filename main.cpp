@@ -22,7 +22,7 @@
 // https://vulkan-tutorial.com/
 // https://github.com/Overv/VulkanTutorial
 
-// CONTINUE TO https://vulkan-tutorial.com/Drawing_a_triangle/Drawing/Rendering_and_presentation#page_Frames_in_flight
+// CONTINUE TO https://vulkan-tutorial.com/Drawing_a_triangle/Swap_chain_recreation
 
 const int WINDOW_WIDTH = 800;
 const int WINDOW_HEIGHT = 600;
@@ -130,6 +130,7 @@ class HelloTriangleApplication {
 
         std::vector<VkSemaphore> imageAvailableSemaphores;
         std::vector<VkSemaphore> renderFinishedSemaphores;
+        std::vector<VkFence> inFlightFences;
         size_t currentFrame = 0;
         void initWindow() {
             glfwInit();
@@ -152,7 +153,7 @@ class HelloTriangleApplication {
             createFramebuffers();
             createCommandPool();
             createCommandBuffers();
-            createSemaphores();
+            createSyncObjects();
         }
         void createVulkanInstance() {
             VkApplicationInfo appInfo = {};
@@ -908,24 +909,35 @@ class HelloTriangleApplication {
                 }
             }
         }
-        void createSemaphores() {
+        void createSyncObjects() {
             imageAvailableSemaphores.resize(MAX_FRAMES_IN_FLIGHT);
             renderFinishedSemaphores.resize(MAX_FRAMES_IN_FLIGHT);
+            inFlightFences.resize(MAX_FRAMES_IN_FLIGHT);
 
             VkSemaphoreCreateInfo semaphoreInfo = {};
             semaphoreInfo.sType = VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO;
 
+            VkFenceCreateInfo fenceInfo = {};
+            fenceInfo.sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO;
+            fenceInfo.flags = VK_FENCE_CREATE_SIGNALED_BIT;
+
             for(size_t i = 0; i < MAX_FRAMES_IN_FLIGHT; i++) {
                 if(vkCreateSemaphore(logicalDevice, &semaphoreInfo, nullptr, &imageAvailableSemaphores[i]) != VK_SUCCESS) {
-                    throw std::runtime_error("failed to create image available semaphore");
+                    throw std::runtime_error("failed to create 'image available semaphore' for frame #" + std::to_string(i));
                 } else {
-                    std::cout << "Successfully created image available semaphore" << std::endl;
+                    std::cout << "Successfully created 'image available semaphore' for frame #" << i << std::endl;
                 }
 
                 if(vkCreateSemaphore(logicalDevice, &semaphoreInfo, nullptr, &renderFinishedSemaphores[i]) != VK_SUCCESS) {
-                    throw std::runtime_error("failed to create render finished semaphore");
+                    throw std::runtime_error("failed to create 'render finished semaphore' for frame #" + std::to_string(i));
                 } else {
-                    std::cout << "Successfully created render finished semaphore" << std::endl;
+                    std::cout << "Successfully created 'render finished semaphore' for frame #" << i << std::endl;
+                }
+
+                if(vkCreateFence(logicalDevice, &fenceInfo, nullptr, &inFlightFences[i]) != VK_SUCCESS) {
+                    throw std::runtime_error("failed to create 'in flight fence' for frame #" + std::to_string(i));
+                } else {
+                    std::cout << "Successfully created 'in flight fence' for frame #" << i << std::endl;
                 }
             }
         }
@@ -938,6 +950,9 @@ class HelloTriangleApplication {
             vkDeviceWaitIdle(logicalDevice);
         }
         void drawFrame() {
+            vkWaitForFences(logicalDevice, 1, &inFlightFences[currentFrame], VK_TRUE, std::numeric_limits<uint64_t>::max());
+            vkResetFences(logicalDevice, 1, &inFlightFences[currentFrame]);
+
             uint32_t imageIndex;
             vkAcquireNextImageKHR(logicalDevice, swapChain, std::numeric_limits<uint64_t>::max(), imageAvailableSemaphores[currentFrame], VK_NULL_HANDLE, &imageIndex);
 
@@ -957,10 +972,10 @@ class HelloTriangleApplication {
             submitInfo.signalSemaphoreCount = 1;
             submitInfo.pSignalSemaphores = signalSemaphores;
 
-            if(vkQueueSubmit(graphicsQueue, 1, &submitInfo, VK_NULL_HANDLE) != VK_SUCCESS) {
+            if(vkQueueSubmit(graphicsQueue, 1, &submitInfo, inFlightFences[currentFrame]) != VK_SUCCESS) {
                 throw std::runtime_error("failed to submit draw command buffer");
             } else {
-                std::cout << "Successfully submitted draw command buffer" << std::endl;
+                // std::cout << "Successfully submitted draw command buffer" << std::endl;
             }
 
             VkPresentInfoKHR presentInfo = {};
@@ -983,6 +998,7 @@ class HelloTriangleApplication {
             for(size_t i = 0; i < MAX_FRAMES_IN_FLIGHT; i++) {
                 vkDestroySemaphore(logicalDevice, imageAvailableSemaphores[i], nullptr);
                 vkDestroySemaphore(logicalDevice, renderFinishedSemaphores[i], nullptr);
+                vkDestroyFence(logicalDevice, inFlightFences[i], nullptr);
             }
 
             vkDestroyCommandPool(logicalDevice, commandPool, nullptr);
@@ -994,7 +1010,6 @@ class HelloTriangleApplication {
             vkDestroyPipeline(logicalDevice, graphicsPipeline, nullptr);
             vkDestroyPipelineLayout(logicalDevice, pipelineLayout, nullptr);
 
-            vkDestroyPipelineLayout(logicalDevice, pipelineLayout, nullptr);
             vkDestroyRenderPass(logicalDevice, renderPass, nullptr);
 
             for(auto imageview : swapChainImageViews) {
