@@ -87,7 +87,7 @@ static std::vector<char> readFile(const std::string& filepath) {
     return buffer;
 }
 
-class HelloTriangleApplication {
+class MainApplication {
     public:
         void run() {
             initWindow();
@@ -99,6 +99,13 @@ class HelloTriangleApplication {
     static VKAPI_ATTR VkBool32 VKAPI_CALL debugCallback(VkDebugUtilsMessageSeverityFlagBitsEXT messageSeverity, VkDebugUtilsMessageTypeFlagsEXT messageType, const VkDebugUtilsMessengerCallbackDataEXT* pCallBackData, void* pUserData) {
         std::cerr << "validation layer : " << pCallBackData->pMessage << std::endl;
         return VK_FALSE;
+    }
+
+    static void framebufferResizeCallback(GLFWwindow* window, int width, int height) {
+        auto app = reinterpret_cast<MainApplication*>(glfwGetWindowUserPointer(window));
+        app->framebufferResized = true;
+
+        std::cout << "Window is resized" << std::endl;
     }
 
     private:
@@ -132,13 +139,17 @@ class HelloTriangleApplication {
         std::vector<VkSemaphore> renderFinishedSemaphores;
         std::vector<VkFence> inFlightFences;
         size_t currentFrame = 0;
+
+        bool framebufferResized = false;
         void initWindow() {
             glfwInit();
 
             glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
-            glfwWindowHint(GLFW_RESIZABLE, GLFW_FALSE);
+            // glfwWindowHint(GLFW_RESIZABLE, GLFW_FALSE);
 
-            window = glfwCreateWindow(800, 600, "Test Vulkan", nullptr, nullptr);
+            window = glfwCreateWindow(WINDOW_WIDTH, WINDOW_HEIGHT, "Ammolite Twelve", nullptr, nullptr);
+            glfwSetWindowUserPointer(window, this);
+            glfwSetFramebufferSizeCallback(window, framebufferResizeCallback);
         }
         void initVulkan() {
             createVulkanInstance();
@@ -154,6 +165,27 @@ class HelloTriangleApplication {
             createCommandPool();
             createCommandBuffers();
             createSyncObjects();
+        }
+        void recreateSwapChain() {
+            int width = 0;
+            int height = 0;
+            while(width == 0 || height == 0) {
+                glfwGetFramebufferSize(window, &width, &height);
+                glfwWaitEvents();
+            }
+
+            vkDeviceWaitIdle(logicalDevice);
+
+            std::cout << "Recreating the swap chain" << std::endl;
+
+            cleanupSwapChain();
+
+            createSwapChain();
+            createImageViews();
+            createRenderPass();
+            createGraphicsPipeline();
+            createFramebuffers();
+            createCommandBuffers();
         }
         void createVulkanInstance() {
             VkApplicationInfo appInfo = {};
@@ -525,7 +557,13 @@ class HelloTriangleApplication {
             if(capabilities.currentExtent.width != std::numeric_limits<uint32_t>::max()) {
                 return capabilities.currentExtent;
             } else {
-                VkExtent2D actualExtent = {WINDOW_WIDTH, WINDOW_HEIGHT};
+                int width, height;
+                glfwGetFramebufferSize(window, &width, &height);
+
+                VkExtent2D actualExtent = {
+                    static_cast<uint32_t>(width),
+                    static_cast<uint32_t>(height)
+                };
 
                 actualExtent.width = std::max(capabilities.minImageExtent.width, std::min(capabilities.maxImageExtent.width, actualExtent.width));
                 actualExtent.height = std::max(capabilities.minImageExtent.height, std::min(capabilities.maxImageExtent.height, actualExtent.height));
@@ -951,10 +989,18 @@ class HelloTriangleApplication {
         }
         void drawFrame() {
             vkWaitForFences(logicalDevice, 1, &inFlightFences[currentFrame], VK_TRUE, std::numeric_limits<uint64_t>::max());
-            vkResetFences(logicalDevice, 1, &inFlightFences[currentFrame]);
 
             uint32_t imageIndex;
-            vkAcquireNextImageKHR(logicalDevice, swapChain, std::numeric_limits<uint64_t>::max(), imageAvailableSemaphores[currentFrame], VK_NULL_HANDLE, &imageIndex);
+            VkResult result = vkAcquireNextImageKHR(logicalDevice, swapChain, std::numeric_limits<uint64_t>::max(), imageAvailableSemaphores[currentFrame], VK_NULL_HANDLE, &imageIndex);
+
+            if(result == VK_ERROR_OUT_OF_DATE_KHR) {
+                recreateSwapChain();
+                return;
+            } else if(result != VK_SUCCESS && result != VK_SUBOPTIMAL_KHR) {
+                throw std::runtime_error("failed to acquire swap chain image");
+            } else {
+                // std::cout << "Successfully acquired the swap chain image" << std::endl;
+            }
 
             VkSubmitInfo submitInfo = {};
             submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
@@ -971,6 +1017,8 @@ class HelloTriangleApplication {
             VkSemaphore signalSemaphores[] = {renderFinishedSemaphores[currentFrame]};
             submitInfo.signalSemaphoreCount = 1;
             submitInfo.pSignalSemaphores = signalSemaphores;
+
+            vkResetFences(logicalDevice, 1, &inFlightFences[currentFrame]);
 
             if(vkQueueSubmit(graphicsQueue, 1, &submitInfo, inFlightFences[currentFrame]) != VK_SUCCESS) {
                 throw std::runtime_error("failed to submit draw command buffer");
@@ -989,23 +1037,28 @@ class HelloTriangleApplication {
             presentInfo.pImageIndices = &imageIndex;
             presentInfo.pResults = nullptr;
 
-            vkQueuePresentKHR(presentQueue, &presentInfo);
+            result = vkQueuePresentKHR(presentQueue, &presentInfo);
+
+            if(result == VK_ERROR_OUT_OF_DATE_KHR || result == VK_SUBOPTIMAL_KHR || framebufferResized == true) {
+                framebufferResized = false;
+                recreateSwapChain();
+            } else if(result == VK_SUCCESS) {
+                // std::cout << "Successfully presented swap chain image" << std::endl;
+            } else {
+                throw std::runtime_error("failed to present swap chain image");
+            }
 
             // vkQueueWaitIdle(presentInfo);
             currentFrame = (currentFrame + 1) % MAX_FRAMES_IN_FLIGHT;
         }
-        void cleanup() {
-            for(size_t i = 0; i < MAX_FRAMES_IN_FLIGHT; i++) {
-                vkDestroySemaphore(logicalDevice, imageAvailableSemaphores[i], nullptr);
-                vkDestroySemaphore(logicalDevice, renderFinishedSemaphores[i], nullptr);
-                vkDestroyFence(logicalDevice, inFlightFences[i], nullptr);
-            }
-
-            vkDestroyCommandPool(logicalDevice, commandPool, nullptr);
+        void cleanupSwapChain() {
+            std::cout << "Cleaning up the swap chain" << std::endl;
 
             for(auto framebuffer : swapChainFramebuffers) {
                 vkDestroyFramebuffer(logicalDevice, framebuffer, nullptr);
             }
+
+            vkFreeCommandBuffers(logicalDevice, commandPool, static_cast<uint32_t>(commandBuffers.size()), commandBuffers.data());
 
             vkDestroyPipeline(logicalDevice, graphicsPipeline, nullptr);
             vkDestroyPipelineLayout(logicalDevice, pipelineLayout, nullptr);
@@ -1017,6 +1070,18 @@ class HelloTriangleApplication {
             }
 
             vkDestroySwapchainKHR(logicalDevice, swapChain, nullptr);
+        }
+        void cleanup() {
+            cleanupSwapChain();
+
+            for(size_t i = 0; i < MAX_FRAMES_IN_FLIGHT; i++) {
+                vkDestroySemaphore(logicalDevice, imageAvailableSemaphores[i], nullptr);
+                vkDestroySemaphore(logicalDevice, renderFinishedSemaphores[i], nullptr);
+                vkDestroyFence(logicalDevice, inFlightFences[i], nullptr);
+            }
+
+            vkDestroyCommandPool(logicalDevice, commandPool, nullptr);
+
             vkDestroyDevice(logicalDevice, nullptr);
 
             if(enableValidationLayers) {
@@ -1025,13 +1090,14 @@ class HelloTriangleApplication {
 
             vkDestroySurfaceKHR(vulkanInstance, surface, nullptr);
             vkDestroyInstance(vulkanInstance, nullptr);
+
             glfwDestroyWindow(window);
             glfwTerminate();
         }
 };
 
 int main() {
-    HelloTriangleApplication app;
+    MainApplication app;
 
     try {
         app.run();
